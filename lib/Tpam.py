@@ -21,7 +21,7 @@
 #
 from io import StringIO
 import paramiko
-from safeguard.sessions.plugin import logging, CredentialStore
+from safeguard.sessions.plugin import logging
 from safeguard.sessions.plugin.host_resolver import HostResolver
 import tempfile
 
@@ -54,16 +54,12 @@ class Tpam:
 
     @classmethod
     def from_config(cls, plugin_configuration):
-        credential_store = CredentialStore.from_config(plugin_configuration)
-        server_user_keys = credential_store.get_keys('tpam', 'server_user_key')
-        if not server_user_keys:
-            raise RuntimeError("No server_user_key set!")
         return cls(
             plugin_configuration.get('tpam', 'server', required=True),
             plugin_configuration.getint('tpam', 'server_port', default=22),
             plugin_configuration.get('tpam', 'server_public_key', required=True),
             plugin_configuration.get('tpam', 'server_user', required=True),
-            server_user_keys[0],
+            plugin_configuration.get_key('tpam', 'server_user_key'),
             HostResolver.from_config(plugin_configuration)
         )
 
@@ -105,10 +101,6 @@ class Tpam:
             ssh.load_host_keys(hostfile.name)  # instead of load_system_host_keys()
 
     def _create_Pkey(self, server_user_cred):
-        if not isinstance(server_user_cred, dict):
-            self.log.error("TPAM server_user_key unusable, should be stored in a local credential store")
-            return None
-
         keytype = server_user_cred['type']
         self.log.debug("Using private key type {}".format(keytype))
         keyclass = self.KEYTYPE_TO_PARAMIKO_KEYCLASS[keytype]

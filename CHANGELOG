@@ -1,3 +1,8 @@
+2.0.3 2019-06-14
+
+Make it possible to include the ssh private key in the configuration.
+This is highly insecure, for testing purposes only.
+
 2.0.2 2019-04-19
 
 Initial release on GitHub.
