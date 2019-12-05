@@ -28,18 +28,41 @@ class ConfigurationValidationError(RuntimeError):
 
 
 class Plugin(PluginBase):
-    def get_private_key_list(self, session_id, session_cookie, cookie, protocol, client_ip, gateway_username,
-                             gateway_password, target_username, target_host, **kwargs):
+    def get_private_key_list(
+        self,
+        session_id,
+        session_cookie,
+        cookie,
+        protocol,
+        client_ip,
+        gateway_username,
+        gateway_password,
+        target_username,
+        target_host,
+        **kwargs
+    ):
         self.logger.info("Getting private keys is not implemented")
-        return {'private_keys': []}
+        return {"private_keys": []}
 
-    def get_password_list(self, session_id, session_cookie, cookie, protocol, client_ip, gateway_username,
-                          gateway_password, target_username, target_host, **kwargs):
+    def get_password_list(
+        self,
+        session_id,
+        session_cookie,
+        cookie,
+        protocol,
+        client_ip,
+        gateway_username,
+        gateway_password,
+        target_username,
+        target_host,
+        **kwargs
+    ):
 
-        reuse_gateway_password = self.plugin_configuration.getboolean('tpam', 'reuse_gateway_password', False)
+        reuse_gateway_password = self.plugin_configuration.getboolean("tpam", "reuse_gateway_password", False)
         if reuse_gateway_password and gateway_username == target_username:
             self.logger.info(
-                "Gateway and target user are the same, no TPAM lookup needed. Using gateway user's password.")
+                "Gateway and target user are the same, no TPAM lookup needed. Using gateway user's password."
+            )
             return self._create_reply(cookie, [gateway_password])
 
         pwlist = None
@@ -53,17 +76,18 @@ class Plugin(PluginBase):
     def _invoke_tpam(self, gateway_username, target_host, target_username):
         with Tpam.from_config(self.plugin_configuration) as tpam:
             # For the next query, we need system in prefix+HOSTNAME (e.g. PSM_HOSTNAME) format.
-            system = (self.plugin_configuration.get('tpam', 'system_prefix', default='') +
-                      self._resolve_system_name(tpam, target_host))
+            system = self.plugin_configuration.get("tpam", "system_prefix", default="") + self._resolve_system_name(
+                tpam, target_host
+            )
 
             reasontext = ",".join((gateway_username, "SPS"))  # TODO: PAM-8576 SPS -> get_gateway_fqdn()
 
-            if self.plugin_configuration.getboolean('tpam', 'system_maptoreal', default=False):
+            if self.plugin_configuration.getboolean("tpam", "system_maptoreal", default=False):
                 # A second lookup is need to get the real system and account info.
                 info = tpam.get_real_sysacc_info(target_username, system)
                 if info:
-                    target_username = info['realaccount']
-                    system = info['realsystem']
+                    target_username = info["realaccount"]
+                    system = info["realsystem"]
                 else:
                     return
 
@@ -71,7 +95,7 @@ class Plugin(PluginBase):
             if not authorized:
                 return
 
-            reasontext = ','.join((reasontext, comment))
+            reasontext = ",".join((reasontext, comment))
 
             password = tpam.get_password(target_username, system, reasontext)
             if password:
@@ -80,37 +104,37 @@ class Plugin(PluginBase):
         self.logger.info("No password found.")
 
     def _resolve_system_name(self, tpam, system_ip_address):
-        resolver = self.plugin_configuration.get('tpam', 'system_name_resolver', default='tpam').lower()
+        resolver = self.plugin_configuration.get("tpam", "system_name_resolver", default="tpam").lower()
 
-        if resolver == 'dns':
+        if resolver == "dns":
             return tpam.get_system_name_with_dns(system_ip_address)
-        elif resolver == 'tpam':
+        elif resolver == "tpam":
             return tpam.get_system_name_with_tpam(system_ip_address)
         else:
             raise ConfigurationValidationError("Unknown system name resolver %s" % resolver)
 
     def _is_authorized(self, tpam, gateway_username, target_username, system):
-        authorization = self.plugin_configuration.get('tpam', 'authorization', default='gateway').lower()
-        required_policy = self.plugin_configuration.get('tpam', 'required_policy', default='Privileged Access')
+        authorization = self.plugin_configuration.get("tpam", "authorization", default="gateway").lower()
+        required_policy = self.plugin_configuration.get("tpam", "required_policy", default="Privileged Access")
 
-        if authorization == 'gateway':
-            return (True, 'gateway')
-        elif authorization == 'approval':
+        if authorization == "gateway":
+            return (True, "gateway")
+        elif authorization == "approval":
             # Does the user have an active/approved request to work on target_host with target_username?
             request = tpam.get_request_details(gateway_username, target_username, system)
             if request is not None:
-                return (True, 'approval,%s' % request['id'])
-        elif authorization == 'policy':
+                return (True, "approval,%s" % request["id"])
+        elif authorization == "policy":
             # Does the user have the required policy for the account/system ?
             if tpam.requestor_has_policy(gateway_username, target_username, system, required_policy):
-                return (True, 'policy,%s' % required_policy)
+                return (True, "policy,%s" % required_policy)
         else:
             raise ConfigurationValidationError("Unknown authorization method %s" % authorization)
         return (False, None)
 
     def _create_reply(self, cookie, password_list):
-        call_count = cookie['call_count'] if 'call_count' in cookie else 0
-        return {'passwords': password_list if password_list else [], 'cookie': {'call_count': call_count + 1}}
+        call_count = cookie["call_count"] if "call_count" in cookie else 0
+        return {"passwords": password_list if password_list else [], "cookie": {"call_count": call_count + 1}}
 
     def authentication_completed(self, session_id, cookie):
         call_count = cookie["call_count"] if "call_count" in cookie else 0

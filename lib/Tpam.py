@@ -37,9 +37,9 @@ class SystemLookupError(Exception):
 class Tpam:
 
     KEYTYPE_TO_PARAMIKO_KEYCLASS = {
-        'ssh-dss': paramiko.DSSKey,
-        'ssh-rsa': paramiko.RSAKey,
-        'ecdsa-sha2-nistp256': paramiko.ECDSAKey,
+        "ssh-dss": paramiko.DSSKey,
+        "ssh-rsa": paramiko.RSAKey,
+        "ecdsa-sha2-nistp256": paramiko.ECDSAKey,
     }
 
     def __init__(self, server, port, hostkey, user, user_key, host_resolver):
@@ -55,16 +55,16 @@ class Tpam:
     @classmethod
     def from_config(cls, plugin_configuration):
         credential_store = CredentialStore.from_config(plugin_configuration)
-        server_user_keys = credential_store.get_keys('tpam', 'server_user_key')
+        server_user_keys = credential_store.get_keys("tpam", "server_user_key")
         if not server_user_keys:
             raise RuntimeError("No server_user_key set!")
         return cls(
-            plugin_configuration.get('tpam', 'server', required=True),
-            plugin_configuration.getint('tpam', 'server_port', default=22),
-            plugin_configuration.get('tpam', 'server_public_key', required=True),
-            plugin_configuration.get('tpam', 'server_user', required=True),
+            plugin_configuration.get("tpam", "server", required=True),
+            plugin_configuration.getint("tpam", "server_port", default=22),
+            plugin_configuration.get("tpam", "server_public_key", required=True),
+            plugin_configuration.get("tpam", "server_user", required=True),
             server_user_keys[0],
-            HostResolver.from_config(plugin_configuration)
+            HostResolver.from_config(plugin_configuration),
         )
 
     def __enter__(self):
@@ -79,8 +79,9 @@ class Tpam:
             ssh.set_missing_host_key_policy(paramiko.RejectPolicy())  # instead of AutoAddPolicy()
             self._load_host_key(ssh)
             dss_key = self._create_Pkey(self.user_key)
-            ssh.connect(self.server, self.port, self.user,
-                        pkey=dss_key, allow_agent=False, look_for_keys=False, timeout=60)
+            ssh.connect(
+                self.server, self.port, self.user, pkey=dss_key, allow_agent=False, look_for_keys=False, timeout=60
+            )
             self.log.debug("SSH transport: " + repr(ssh.get_transport()))
             self.conn = ssh
         except Exception as e:
@@ -96,8 +97,9 @@ class Tpam:
             self.conn.close()
             self.conn = None
         except Exception as e:
-            raise APIConnError("Failed to close SSH connection to %s:%i. Error: %s: %s" %
-                               (self.server, self.port, e.__class__, str(e)))
+            raise APIConnError(
+                "Failed to close SSH connection to %s:%i. Error: %s: %s" % (self.server, self.port, e.__class__, str(e))
+            )
 
     def _load_host_key(self, ssh):
         self.log.debug("Loading hostkey: {}".format(self.hostkey))
@@ -109,10 +111,10 @@ class Tpam:
             self.log.error("TPAM server_user_key unusable, should be stored in a local credential store")
             return None
 
-        keytype = server_user_cred['type']
+        keytype = server_user_cred["type"]
         self.log.debug("Using private key type {}".format(keytype))
         keyclass = self.KEYTYPE_TO_PARAMIKO_KEYCLASS[keytype]
-        keyfile = StringIO(server_user_cred.get('key'))
+        keyfile = StringIO(server_user_cred.get("key"))
         return keyclass.from_private_key(keyfile)
 
     def get_system_name_with_dns(self, system_ip_address):
@@ -120,60 +122,58 @@ class Tpam:
         hosts = self.host_resolver.resolve_hosts_by_ip(system_ip_address)
         if hosts:
             # The initial lookup for active/approved requests (ListRequestDetails) expects PSM_HOSTNAME.
-            return hosts[0].split('.')[0].upper()
+            return hosts[0].split(".")[0].upper()
         else:
             # If IP can't be resolved to a hostname, we can't continue.
             raise SystemLookupError("Failed to look up system name with DNS from: %s" % system_ip_address)
 
     def get_system_name_with_tpam(self, system_ip_address):
         self.log.debug("Looking up TPAM system name from %s using TPAM ListSystems call" % system_ip_address)
-        (stdin, stdout, stderr) = self.conn.exec_command(
-            'ListSystems --NetworkAddress %s' % system_ip_address
-        )
+        (stdin, stdout, stderr) = self.conn.exec_command("ListSystems --NetworkAddress %s" % system_ip_address)
         response = stdout.readlines()
 
-        if response[0].strip() != 'No Systems to list':
-            return response[1].split('\t')[0]
+        if response[0].strip() != "No Systems to list":
+            return response[1].split("\t")[0]
         else:
             raise SystemLookupError("Failed to look up system name with TPAM ListSystems from: %s" % system_ip_address)
 
     def get_request_details(self, requestor, account, system):
         "Queries TPAM for active and approved requests. Returns a dict of {'id', 'endtime'} or None."
         self.log.info(
-            "Fetching request details for requestor: '%s' for account: '%s' on system: '%s'" %
-            (requestor, account, system)
+            "Fetching request details for requestor: '%s' for account: '%s' on system: '%s'"
+            % (requestor, account, system)
         )
 
         (stdin, stdout, stderr) = self.conn.exec_command(
-            'ListRequestDetails --RequestorName %s --AccountName %s --SystemName %s --Status Active' %
-            (requestor, account, system)
+            "ListRequestDetails --RequestorName %s --AccountName %s --SystemName %s --Status Active"
+            % (requestor, account, system)
         )
         response = stdout.readlines()
 
         # Respose is either a 'No Request to list' or a 2+ item list: ['header', 'request', ...].
-        if response[0].strip() != 'No Requests to list':
-            request = response[1].split('\t')
+        if response[0].strip() != "No Requests to list":
+            request = response[1].split("\t")
             # We only need 'request-id' and end time ('%Y-%m-%d %H:%M:%S.%f').
-            return {'id': request[0], 'endtime': request[12]}
+            return {"id": request[0], "endtime": request[12]}
         else:
             self.log.info("No active and valid request found.")
 
     def requestor_has_policy(self, requestor, account, system, required_policy):
         self.log.info(
-            "Checking '%s' policy for requestor: '%s' for account: '%s' on system: '%s'" %
-            (required_policy, requestor, account, system)
+            "Checking '%s' policy for requestor: '%s' for account: '%s' on system: '%s'"
+            % (required_policy, requestor, account, system)
         )
 
         (stdin, stdout, stderr) = self.conn.exec_command(
-            'ListAssignedPolicies ' +
-            '--UserName %s --AccountName %s --SystemName %s ' % (requestor, account, system) +
-            '--AllOrEffectiveFlag E --PermissionType Pwd'
+            "ListAssignedPolicies "
+            + "--UserName %s --AccountName %s --SystemName %s " % (requestor, account, system)
+            + "--AllOrEffectiveFlag E --PermissionType Pwd"
         )
         response = stdout.readlines()
 
-        if response[0].strip() != 'No Permissions to list':
+        if response[0].strip() != "No Permissions to list":
             for line in response[1:]:
-                if line.split('\t')[9] == required_policy:
+                if line.split("\t")[9] == required_policy:
                     return True
 
         self.log.info("Requestor does not have the required policy")
@@ -184,41 +184,40 @@ class Tpam:
         self.log.info("Retrieving real account and system name for account: '%s' and system: '%s'" % (account, system))
 
         (stdin, stdout, stderr) = self.conn.exec_command(
-            'ListAccounts --AccountName %s --SystemName %s' % (account, system)
+            "ListAccounts --AccountName %s --SystemName %s" % (account, system)
         )
         response = stdout.readlines()
 
         # Response is either 'No Accounts to list' or a 2+ item list: ['header', 'accountinfo', ...].
-        if response[0].strip() != 'No Accounts to list':
-            realinfo = dict(zip(response[0].split('\t'), response[1].split('\t')))
-            realaccount = realinfo.get('AccountCustom1')
-            realsystem = realinfo.get('AccountCustom2')
+        if response[0].strip() != "No Accounts to list":
+            realinfo = dict(zip(response[0].split("\t"), response[1].split("\t")))
+            realaccount = realinfo.get("AccountCustom1")
+            realsystem = realinfo.get("AccountCustom2")
 
             if realaccount and realsystem:
-                return {'realaccount': realaccount, 'realsystem': realsystem}
+                return {"realaccount": realaccount, "realsystem": realsystem}
 
         self.log.info("Could not find real system name and account info.")
 
     def get_password(self, realaccount, realsystem, reasontext):
         "Checks out password from TPAM. Returns a string of 'password'."
         self.log.info(
-            "Checking out password for account: '%s' on server: '%s' reason: '%s'" %
-            (realaccount, realsystem, reasontext)
+            "Checking out password for account: '%s' on server: '%s' reason: '%s'"
+            % (realaccount, realsystem, reasontext)
         )
 
         (stdin, stdout, stderr) = self.conn.exec_command(
-            'Retrieve --AccountName %s --SystemName %s --ReasonText "%s"' %
-            (realaccount, realsystem, reasontext)
+            'Retrieve --AccountName %s --SystemName %s --ReasonText "%s"' % (realaccount, realsystem, reasontext)
         )
         response = stdout.readlines()
 
         # Response is either a single line with '...not authorized...' or 'password'.
-        return response[0].rstrip('\r\n') if response and 'not authorized' not in response[0].lower() else None
+        return response[0].rstrip("\r\n") if response and "not authorized" not in response[0].lower() else None
 
 
 class TempHostKeyFile:
     def __init__(self, hostkey):
-        self.tempfile = tempfile.NamedTemporaryFile(mode='w+t', dir='/tmp')
+        self.tempfile = tempfile.NamedTemporaryFile(mode="w+t", dir="/tmp")
         self.tempfile.write(hostkey)
         self.tempfile.flush()
 
